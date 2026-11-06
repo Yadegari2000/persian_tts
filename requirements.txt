@@ -1,0 +1,6 @@
+datasets
+huggingface_hub
+soundfile
+librosa
+matplotlib
+pandas
