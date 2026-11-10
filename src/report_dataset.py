@@ -67,14 +67,19 @@ def section_counts():
     print(f"  rows with empty text (null): {total_empty}")
 
 
-def total_duration_seconds(split):
-    """Sum the duration (in seconds) of all wav files under <split>/audio.
+def clip_durations(split):
+    """Return a list with the duration (in seconds) of every wav file under <split>/audio.
     sf.info reads only the file header, so no audio samples are loaded into memory."""
-    total = 0.0
+    durations = []
     for path in audio_files(split).values():
         info = sf.info(str(path))
-        total += info.frames / info.samplerate  # duration = number of frames / sample rate
-    return total
+        durations.append(info.frames / info.samplerate)  # duration = frames / sample rate
+    return durations
+
+
+def total_duration_seconds(split):
+    """Sum of all clip durations in a split, in seconds."""
+    return sum(clip_durations(split))
 
 
 def section_total_duration():
@@ -92,7 +97,29 @@ def section_total_duration():
     print(f"  total duration: {grand_total / 60:.1f} min ({grand_total:.0f} s)")
 
 
+def section_mean_duration():
+    """Section 3: mean clip length per split and across both splits together."""
+    print("=== Section 3: mean clip length ===")
+    all_durations = []
+
+    for split in SPLITS:
+        durations = clip_durations(split)
+        all_durations.extend(durations)
+        if not durations:
+            print(f"\n[{split}] no clips found")
+            continue
+        # mean = sum of lengths divided by number of clips
+        print(f"\n[{split}]")
+        print(f"  mean clip length: {sum(durations) / len(durations):.2f} s")
+
+    if all_durations:
+        print("\n[total: train + test]")
+        print(f"  mean clip length: {sum(all_durations) / len(all_durations):.2f} s")
+
+
 if __name__ == "__main__":
     section_counts()
     print()
     section_total_duration()
+    print()
+    section_mean_duration()
