@@ -4,11 +4,15 @@ Run:  python src/report_dataset.py
 """
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")  # save figures to files, no window needed
+import matplotlib.pyplot as plt
 import soundfile as sf
 
 # Project paths, resolved from this file's location so the script works from any folder
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "s8_raw"
+OUT_DIR = ROOT / "outputs"
 SPLITS = ["train", "test"]
 
 
@@ -117,9 +121,36 @@ def section_mean_duration():
         print(f"  mean clip length: {sum(all_durations) / len(all_durations):.2f} s")
 
 
+def section_histogram():
+    """Section 4: histogram of clip lengths for train + test, saved as a PNG."""
+    print("=== Section 4: clip length histogram ===")
+    all_durations = []
+    for split in SPLITS:
+        all_durations.extend(clip_durations(split))
+
+    if not all_durations:
+        print("  no clips found, skipping histogram")
+        return
+
+    OUT_DIR.mkdir(exist_ok=True)  # create outputs/ if it does not exist
+    plt.figure(figsize=(8, 4))
+    plt.hist(all_durations, bins=50)  # 50 bins across the range of clip lengths
+    plt.xlabel("Clip length (s)")
+    plt.ylabel("Number of clips")
+    plt.title("Clip length histogram (train + test)")
+    plt.tight_layout()
+
+    out_path = OUT_DIR / "duration_hist.png"
+    plt.savefig(out_path, dpi=120)
+    plt.close()  # free memory held by the figure
+    print(f"  histogram saved: {out_path.relative_to(ROOT)}")
+
+
 if __name__ == "__main__":
     section_counts()
     print()
     section_total_duration()
     print()
     section_mean_duration()
+    print()
+    section_histogram()
