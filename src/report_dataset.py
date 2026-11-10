@@ -2,6 +2,7 @@
 Report for the raw amir0907/s8 dataset in data/s8_raw.
 Run:  python src/report_dataset.py
 """
+from collections import Counter
 from pathlib import Path
 
 import matplotlib
@@ -146,6 +147,25 @@ def section_histogram():
     print(f"  histogram saved: {out_path.relative_to(ROOT)}")
 
 
+def section_audio_format():
+    """Section 5: sample rates and channel counts found across all wav files.
+    Counter shows how many clips use each (sample rate, channels) pair."""
+    print("=== Section 5: sample rate and channels ===")
+    formats = Counter()  # key: (sample_rate, channels), value: number of clips
+
+    for split in SPLITS:
+        for path in audio_files(split).values():
+            info = sf.info(str(path))
+            formats[(info.samplerate, info.channels)] += 1
+
+    if not formats:
+        print("  no clips found")
+        return
+
+    for (rate, channels), count in sorted(formats.items()):
+        print(f"  {rate} Hz, {channels} channel(s): {count} clips")
+
+
 if __name__ == "__main__":
     section_counts()
     print()
@@ -154,3 +174,5 @@ if __name__ == "__main__":
     section_mean_duration()
     print()
     section_histogram()
+    print()
+    section_audio_format()
