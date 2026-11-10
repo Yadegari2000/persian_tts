@@ -4,6 +4,9 @@ Run:  python src/report_dataset.py
 """
 from pathlib import Path
 
+import soundfile as sf
+
+# Project paths, resolved from this file's location so the script works from any folder
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "s8_raw"
 SPLITS = ["train", "test"]
@@ -17,16 +20,16 @@ def read_metadata(split):
         for line in f:
             line = line.rstrip("\n")
             if not line:
-                continue
-            name, _, text = line.partition("|")
+                continue  # skip blank lines
+            name, _, text = line.partition("|")  # format: filename|text
             rows.append((name.strip(), text.strip()))
     return rows
 
 
 def audio_files(split):
-    """Return a set of audio file base names found under <split>/audio."""
+    """Return a dict: audio base name -> full path, searching under <split>/audio."""
     audio_dir = RAW_DIR / split / "audio"
-    return {p.stem for p in audio_dir.rglob("*.wav")}
+    return {p.stem: p for p in audio_dir.rglob("*.wav")}
 
 
 def base_name(name):
@@ -35,6 +38,7 @@ def base_name(name):
 
 
 def section_counts():
+    """Section 1: clip counts, metadata rows, and empty text per split and in total."""
     print("=== Section 1: clip counts, metadata rows, empty text ===")
     total_audio = 0
     total_rows = 0
@@ -44,7 +48,7 @@ def section_counts():
         rows = read_metadata(split)
         wavs = audio_files(split)
         names = [base_name(n) for n, _ in rows]
-        missing = set(names) - wavs
+        missing = set(names) - set(wavs)  # metadata names with no matching wav file
         empty_text = sum(1 for _, text in rows if not text)
 
         total_audio += len(wavs)
@@ -63,5 +67,32 @@ def section_counts():
     print(f"  rows with empty text (null): {total_empty}")
 
 
+def total_duration_seconds(split):
+    """Sum the duration (in seconds) of all wav files under <split>/audio.
+    sf.info reads only the file header, so no audio samples are loaded into memory."""
+    total = 0.0
+    for path in audio_files(split).values():
+        info = sf.info(str(path))
+        total += info.frames / info.samplerate  # duration = number of frames / sample rate
+    return total
+
+
+def section_total_duration():
+    """Section 2: total duration of clips per split and for both splits together."""
+    print("=== Section 2: total duration ===")
+    grand_total = 0.0
+
+    for split in SPLITS:
+        seconds = total_duration_seconds(split)
+        grand_total += seconds
+        print(f"\n[{split}]")
+        print(f"  total duration: {seconds / 60:.1f} min ({seconds:.0f} s)")
+
+    print("\n[total: train + test]")
+    print(f"  total duration: {grand_total / 60:.1f} min ({grand_total:.0f} s)")
+
+
 if __name__ == "__main__":
     section_counts()
+    print()
+    section_total_duration()
