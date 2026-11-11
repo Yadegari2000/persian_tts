@@ -1,8 +1,10 @@
 """
-Report for the raw amir0907/s8 dataset in data/s8_raw.
-Run:  python src/report_dataset.py
+Report for raw datasets in data/ (man-1 and woman-1).
+Run:  python main.py
 """
+import statistics
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import matplotlib
@@ -10,31 +12,29 @@ matplotlib.use("Agg")  # save figures to files, no window needed
 import matplotlib.pyplot as plt
 import soundfile as sf
 
-# Project paths, resolved from this file's location so the script works from any folder
 ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = ROOT / "data" / "s8_raw"
+RAW_DIR = [
+    ROOT / "data" / "persian-tts-datasets-man-1",
+    ROOT / "data" / "persian-tts-datasets-woman-1",
+]
+RAW_DIRS = RAW_DIR
 OUT_DIR = ROOT / "outputs"
-SPLITS = ["train", "test"]
 
 
-def read_metadata(split):
-    """Read each metadata line as (filename, text). The CSV has no header."""
-    path = RAW_DIR / f"{split}_metadata.csv"
+def read_metadata(raw_dir, split):
+    """Read metadata lines as (filename, text). The CSV has no header."""
+    path = raw_dir / f"{split}_metadata.csv"
+    if not path.is_file():
+        raise SystemExit(f"Missing metadata file: {path}")
     rows = []
-    with open(path, encoding="utf-8") as f:
+    # errors="replace": a bad byte must not crash the whole report
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
-            if not line:
-                continue  # skip blank lines
-            name, _, text = line.partition("|")  # format: filename|text
-            rows.append((name.strip(), text.strip()))
+            if line:
+                name, _, text = line.partition("|")  # format: filename|text
+                rows.append((name.strip(), text.strip()))
     return rows
-
-
-def audio_files(split):
-    """Return a dict: audio base name -> full path, searching under <split>/audio."""
-    audio_dir = RAW_DIR / split / "audio"
-    return {p.stem: p for p in audio_dir.rglob("*.wav")}
 
 
 def base_name(name):
@@ -42,137 +42,138 @@ def base_name(name):
     return name[:-4] if name.lower().endswith(".wav") else name
 
 
-def section_counts():
-    """Section 1: clip counts, metadata rows, and empty text per split and in total."""
-    print("=== Section 1: clip counts, metadata rows, empty text ===")
-    total_audio = 0
-    total_rows = 0
-    total_empty = 0
+def audio_paths(raw_dir, split):
+    """List wav files under <split>/audio, skipping symlinks and files outside the folder."""
+    audio_dir = (raw_dir / split / "audio").resolve()
+    if not audio_dir.is_dir():
+        raise SystemExit(f"Missing audio folder: {audio_dir}")
+    # symlinks could point outside the dataset, so they are ignored
+    return [p for p in audio_dir.rglob("*.wav") if p.is_file() and not p.is_symlink()]
 
-    for split in SPLITS:
-        rows = read_metadata(split)
-        wavs = audio_files(split)
-        names = [base_name(n) for n, _ in rows]
-        missing = set(names) - set(wavs)  # metadata names with no matching wav file
+
+def read_header(path):
+    """Return (duration_s, sample_rate, channels), or None for an unreadable file.
+    sf.info reads only the header, so no audio samples are loaded."""
+    try:
+        info = sf.info(str(path))
+    except RuntimeError:  # soundfile raises LibsndfileError (a RuntimeError) on bad files
+        return None
+    if info.samplerate <= 0:  # avoid division by zero on a corrupt header
+        return None
+    return info.frames / info.samplerate, info.samplerate, info.channels
+
+
+def scan_split(raw_dir, split):
+    """Scan one split once. Return (paths, headers, bad_count)."""
+    paths = audio_paths(raw_dir, split)
+    with ThreadPoolExecutor(max_workers=8) as pool:  # header reads are I/O bound
+        results = list(pool.map(read_header, paths))
+    headers = [r for r in results if r is not None]
+    return paths, headers, len(results) - len(headers)
+
+
+def section_counts(raw_dir, scans, splits):
+    """Section 1: clip counts, metadata rows, and empty text."""
+    print("=== Section 1: clip counts, metadata rows, empty text ===")
+    totals = Counter()
+
+    for split in splits:
+        rows = read_metadata(raw_dir, split)
+        paths, _, bad = scans[split]
+        stems = {p.stem for p in paths}  # set is enough: only membership is checked
+        missing = sum(1 for n, _ in rows if base_name(n) not in stems)
         empty_text = sum(1 for _, text in rows if not text)
 
-        total_audio += len(wavs)
-        total_rows += len(rows)
-        total_empty += empty_text
-
         print(f"\n[{split}]")
-        print(f"  audio clips in {split}/audio: {len(wavs)}")
+        print(f"  audio clips in {split}/audio: {len(paths)}")
+        print(f"  unreadable/corrupt wav files: {bad}")
         print(f"  rows in {split}_metadata.csv: {len(rows)}")
-        print(f"  rows whose audio is missing: {sum(1 for n in names if n in missing)}")
+        print(f"  rows whose audio is missing: {missing}")
         print(f"  rows with empty text (null): {empty_text}")
+        totals.update(audio=len(paths), rows=len(rows), empty=empty_text)
 
-    print("\n[total: train + test]")
-    print(f"  audio clips: {total_audio}")
-    print(f"  metadata rows: {total_rows}")
-    print(f"  rows with empty text (null): {total_empty}")
-
-
-def clip_durations(split):
-    """Return a list with the duration (in seconds) of every wav file under <split>/audio.
-    sf.info reads only the file header, so no audio samples are loaded into memory."""
-    durations = []
-    for path in audio_files(split).values():
-        info = sf.info(str(path))
-        durations.append(info.frames / info.samplerate)  # duration = frames / sample rate
-    return durations
+    if len(splits) > 1:
+        print(f"\n[total: {' + '.join(splits)}]")
+        print(f"  audio clips: {totals['audio']}")
+        print(f"  metadata rows: {totals['rows']}")
+        print(f"  rows with empty text (null): {totals['empty']}")
 
 
-def total_duration_seconds(split):
-    """Sum of all clip durations in a split, in seconds."""
-    return sum(clip_durations(split))
-
-
-def section_total_duration():
-    """Section 2: total duration of clips per split and for both splits together."""
-    print("=== Section 2: total duration ===")
-    grand_total = 0.0
-
-    for split in SPLITS:
-        seconds = total_duration_seconds(split)
-        grand_total += seconds
+def section_durations(scans, splits):
+    """Sections 2 and 3: total and mean duration, from the single scan."""
+    print("=== Section 2: total duration / Section 3: mean clip length ===")
+    everything = []
+    for split in splits:
+        durs = [h[0] for h in scans[split][1]]
+        everything.extend(durs)
         print(f"\n[{split}]")
-        print(f"  total duration: {seconds / 60:.1f} min ({seconds:.0f} s)")
+        if durs:
+            print(f"  total duration: {sum(durs) / 60:.1f} min ({sum(durs):.0f} s)")
+            print(f"  mean clip length: {statistics.fmean(durs):.2f} s")
+        else:
+            print("  no readable clips")
 
-    print("\n[total: train + test]")
-    print(f"  total duration: {grand_total / 60:.1f} min ({grand_total:.0f} s)")
-
-
-def section_mean_duration():
-    """Section 3: mean clip length per split and across both splits together."""
-    print("=== Section 3: mean clip length ===")
-    all_durations = []
-
-    for split in SPLITS:
-        durations = clip_durations(split)
-        all_durations.extend(durations)
-        if not durations:
-            print(f"\n[{split}] no clips found")
-            continue
-        # mean = sum of lengths divided by number of clips
-        print(f"\n[{split}]")
-        print(f"  mean clip length: {sum(durations) / len(durations):.2f} s")
-
-    if all_durations:
-        print("\n[total: train + test]")
-        print(f"  mean clip length: {sum(all_durations) / len(all_durations):.2f} s")
+    if len(splits) > 1 and everything:
+        print(f"\n[total: {' + '.join(splits)}]")
+        print(f"  total duration: {sum(everything) / 60:.1f} min ({sum(everything):.0f} s)")
+        print(f"  mean clip length: {statistics.fmean(everything):.2f} s")
 
 
-def section_histogram():
-    """Section 4: histogram of clip lengths for train + test, saved as a PNG."""
+def section_histogram(raw_dir, scans, splits):
+    """Section 4: histogram of clip lengths, saved as a PNG."""
     print("=== Section 4: clip length histogram ===")
-    all_durations = []
-    for split in SPLITS:
-        all_durations.extend(clip_durations(split))
-
-    if not all_durations:
+    durs = [h[0] for s in splits for h in scans[s][1]]
+    if not durs:
         print("  no clips found, skipping histogram")
         return
 
-    OUT_DIR.mkdir(exist_ok=True)  # create outputs/ if it does not exist
-    plt.figure(figsize=(8, 4))
-    plt.hist(all_durations, bins=50)  # 50 bins across the range of clip lengths
-    plt.xlabel("Clip length (s)")
-    plt.ylabel("Number of clips")
-    plt.title("Clip length histogram (train + test)")
-    plt.tight_layout()
-
-    out_path = OUT_DIR / "duration_hist.png"
-    plt.savefig(out_path, dpi=120)
-    plt.close()  # free memory held by the figure
+    OUT_DIR.mkdir(exist_ok=True)
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.hist(durs, bins=50)
+    ax.set_xlabel("Clip length (s)")
+    ax.set_ylabel("Number of clips")
+    ax.set_title(f"Clip length histogram - {raw_dir.name} ({' + '.join(splits)})")
+    fig.tight_layout()
+    out_path = OUT_DIR / f"duration_hist_{raw_dir.name}.png"
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)  # free memory held by the figure
     print(f"  histogram saved: {out_path.relative_to(ROOT)}")
 
 
-def section_audio_format():
-    """Section 5: sample rates and channel counts found across all wav files.
-    Counter shows how many clips use each (sample rate, channels) pair."""
+def section_audio_format(scans, splits):
+    """Section 5: how many clips use each (sample rate, channels) pair."""
     print("=== Section 5: sample rate and channels ===")
-    formats = Counter()  # key: (sample_rate, channels), value: number of clips
-
-    for split in SPLITS:
-        for path in audio_files(split).values():
-            info = sf.info(str(path))
-            formats[(info.samplerate, info.channels)] += 1
-
+    formats = Counter((h[1], h[2]) for s in splits for h in scans[s][1])
     if not formats:
         print("  no clips found")
         return
-
     for (rate, channels), count in sorted(formats.items()):
         print(f"  {rate} Hz, {channels} channel(s): {count} clips")
 
 
-if __name__ == "__main__":
-    section_counts()
-    print()
-    section_total_duration()
-    print()
-    section_mean_duration()
-    print()
-    section_histogram()
-    print()
-    section_audio_format()
+def run_report():
+    """Scan every dataset directory and its splits once, then print all report sections."""
+    dirs = RAW_DIR if isinstance(RAW_DIR, list) else [RAW_DIR]
+    for i, raw_dir in enumerate(dirs):
+        if not raw_dir.is_dir():
+            print(f"Directory not found: {raw_dir}")
+            continue
+
+        splits = [s for s in ["train", "test"] if (raw_dir / f"{s}_metadata.csv").is_file()]
+        if not splits:
+            print(f"No valid splits found in {raw_dir}")
+            continue
+
+        print(f"=== Dataset: {raw_dir.name} ===")
+        scans = {split: scan_split(raw_dir, split) for split in splits}
+        section_counts(raw_dir, scans, splits)
+        print()
+        section_durations(scans, splits)
+        print()
+        section_histogram(raw_dir, scans, splits)
+        print()
+        section_audio_format(scans, splits)
+
+        if i < len(dirs) - 1:
+            print("\n" + "=" * 50 + "\n")
+
