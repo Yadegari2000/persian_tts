@@ -13,7 +13,7 @@ REPO = [
     "https://huggingface.co/datasets/amir0907/s8",
     "https://huggingface.co/datasets/amir0907/Persian-TTS-Speaker0"
 ]
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = ROOT / "data"
 
 

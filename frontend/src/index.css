@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    direction: rtl;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #090d16;
+    color: #f8fafc;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* Tabular figures for durations, counts, timestamps, and sliders */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Custom subtle dark scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b1329;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #223254;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #334b7d;
+  }
+}
+
+/* Native audio element styling in dark mode */
+audio {
+  color-scheme: dark;
+  height: 36px;
+}
+
+/* Keyboard shortcut cap */
+kbd {
+  font-family: var(--font-mono);
+}

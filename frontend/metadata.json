@@ -1,0 +1,6 @@
+{
+  "name": "Persian Multi-Voice TTS Studio",
+  "description": "تبدیل متن به گفتار فارسی چندصدایی با پیش‌پردازش هوشمند، حالت دیالوگ و ادغام صدا",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

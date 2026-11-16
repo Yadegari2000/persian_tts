@@ -1,6 +1,6 @@
 """
 Report for raw datasets in data/ (man-1 and woman-1).
-Run:  python main.py
+Run:  python backend/main.py
 """
 import statistics
 from collections import Counter
@@ -12,7 +12,7 @@ matplotlib.use("Agg")  # save figures to files, no window needed
 import matplotlib.pyplot as plt
 import soundfile as sf
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 RAW_DIR = [
     ROOT / "data" / "persian-tts-datasets-man-1",
     ROOT / "data" / "persian-tts-datasets-woman-1",

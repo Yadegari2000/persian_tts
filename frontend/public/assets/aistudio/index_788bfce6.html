@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تبدیل متن به گفتار فارسی چندصدایی | Persian TTS</title>
+  
+  <!-- Persian Vazirmatn Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="./style_421ff724.css">
+</head>
+<body class="theme-dark">
+
+  <!-- Application Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <div class="brand">
+        <button id="btn-toggle-drawer" class="btn-icon drawer-toggle-btn" aria-label="نمایش پنل صداها">
+          ☰
+        </button>
+        <div class="logo-icon">🎙️</div>
+        <div>
+          <h1 class="brand-title">تبدیل متن به گفتار فارسی چندصدایی</h1>
+          <p class="brand-subtitle text-xs text-muted">ترکیب، پیش‌پردازش متن و ادغام گفتار با گویندگان متنوع</p>
+        </div>
+      </div>
+
+      <!-- Header Tools: Undo/Redo & Project Export/Import -->
+      <div class="header-tools">
+        <div class="btn-group">
+          <button id="btn-undo" class="btn btn-secondary btn-sm" title="واگرد تغییرات پاراگراف‌ها (Ctrl+Z)" disabled>
+            ↩️
+          </button>
+          <button id="btn-redo" class="btn btn-secondary btn-sm" title="انجام مجدد تغییرات پاراگراف‌ها (Ctrl+Y)" disabled>
+            ↪️
+          </button>
+        </div>
+
+        <button id="btn-open-dict-modal" class="btn btn-secondary btn-sm" title="مدیریت دیکشنری تلفظ اختصاصی">
+          📖 دیکشنری تلفظ
+        </button>
+
+        <div class="btn-group">
+          <button id="btn-export-project" class="btn btn-secondary btn-sm" title="صادرات تمام داده‌ها به صورت فایل JSON">
+            💾 پشتیبان‌گیری
+          </button>
+          <button id="btn-import-project" class="btn btn-secondary btn-sm" title="بارگذاری پروژه از فایل JSON">
+            📂 بازیابی
+          </button>
+          <input type="file" id="file-import-project" accept=".json" class="hidden" />
+        </div>
+
+        <div class="header-badges">
+          <span class="badge badge-accent">نسخه ۳.۰</span>
+          <span id="badge-mock-indicator" class="badge badge-idle">حالت شبیه‌ساز (MOCK)</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer Overlay -->
+  <div id="drawer-overlay" class="drawer-overlay hidden"></div>
+
+  <!-- Main Grid Layout -->
+  <div class="app-layout">
+
+    <!-- Sidebar: Voices and Tags Management -->
+    <aside id="app-sidebar" class="sidebar" aria-label="پنل مدیریت صداها و تگ‌ها">
+      <div class="sidebar-header">
+        <div class="sidebar-title-row">
+          <h2>مدیریت صداها</h2>
+          <button id="btn-open-add-voice" class="btn btn-sm btn-primary">
+            + صدای جدید
+          </button>
+        </div>
+        <p class="text-xs text-muted">انتخاب، دسته‌بندی و پیش‌شنود گویندگان</p>
+      </div>
+
+      <!-- Tag Filter Box -->
+      <section class="tag-filter-box card">
+        <div class="tag-filter-header">
+          <span class="text-sm font-semibold">فیلتر تگ‌ها:</span>
+          <div class="filter-modes">
+            <label class="filter-mode-label" title="تطابق با هر کدام از تگ‌های انتخابی">
+              <input type="radio" name="filter-mode" id="filter-mode-or" value="OR" checked> یا (OR)
+            </label>
+            <label class="filter-mode-label" title="تطابق با تمامی تگ‌های انتخابی">
+              <input type="radio" name="filter-mode" id="filter-mode-and" value="AND"> و (AND)
+            </label>
+          </div>
+        </div>
+
+        <div class="tag-filter-options">
+          <label class="untagged-label">
+            <input type="checkbox" id="filter-untagged">
+            <span>فقط بدون تگ</span>
+          </label>
+        </div>
+
+        <div id="tag-filter-list" class="tag-chips-wrapper">
+          <!-- Dynamic Filter Chips -->
+        </div>
+      </section>
+
+      <!-- Voice Cards List -->
+      <section class="voice-cards-section">
+        <div id="voice-list" class="voice-list-container">
+          <!-- Rendered in ui.js -->
+        </div>
+      </section>
+    </aside>
+
+    <!-- Main Content: Paragraphs, Library & Final Merge -->
+    <main class="main-content">
+
+      <!-- Paragraphs (Segments) Section -->
+      <section class="content-section" aria-labelledby="section-paragraphs-title">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 id="section-paragraphs-title">پاراگراف‌ها</h2>
+            <span class="text-xs text-muted">متن را بنویسید؛ پیش‌پردازش و وقفه پس از هر بخش را تنظیم کنید</span>
+          </div>
+          <div class="section-actions">
+            <!-- Mode Switch Tabs -->
+            <div class="paragraph-mode-tabs" role="tablist">
+              <button id="tab-mode-normal" type="button" class="btn-tab active" role="tab" aria-selected="true" onclick="window.setParagraphMode && window.setParagraphMode('normal')">
+                📝 حالت عادی
+              </button>
+              <button id="tab-mode-dialogue" type="button" class="btn-tab" role="tab" aria-selected="false" onclick="window.setParagraphMode && window.setParagraphMode('dialogue')">
+                🎭 حالت دیالوگ
+              </button>
+            </div>
+
+            <button id="btn-open-split-modal" class="btn btn-secondary btn-sm normal-mode-action" title="تقسیم متن بلند به پاراگراف‌ها با خط خالی">
+              ✂️ تقسیم خودکار متن
+            </button>
+            <button id="btn-convert-all" class="btn btn-accent btn-sm normal-mode-action" title="تبدیل تمام پاراگراف‌های آماده">
+              ⚡ تبدیل همه به ویس
+            </button>
+            <button id="btn-cancel-batch" class="btn btn-danger btn-sm hidden" title="لغو تبدیل همزمان">
+              ⏹️ لغو تبدیل
+            </button>
+            <button id="btn-add-segment" class="btn btn-primary btn-sm normal-mode-action">
+              + افزودن پاراگراف
+            </button>
+          </div>
+        </div>
+
+        <!-- Batch Conversion Progress Bar -->
+        <div id="batch-progress-bar-container" class="batch-progress-box card hidden">
+          <div class="batch-progress-header">
+            <span id="batch-progress-text" class="text-sm font-semibold">در حال پردازش...</span>
+          </div>
+          <div class="progress-track">
+            <div id="batch-progress-fill" class="progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Dialogue Mode Inline Panel (shown when حالت دیالوگ is active) -->
+        <div id="dialogue-panel" class="dialogue-panel card hidden animate-fade-in">
+          <div class="dialogue-panel-header">
+            <p class="dialogue-panel-instruction text-sm">
+              متن دیالوگ یا فیلمنامه را با فرمت «نام شخصیت: دیالوگ» در هر خط وارد کنید. سپس برای هر شخصیت یک صدا انتخاب کنید و روی «اعمال» کلیک کنید.
+            </p>
+          </div>
+
+          <div class="dialogue-panel-body">
+            <label class="form-label font-semibold" for="dialogue-textarea-inline">
+              متن دیالوگ یا فیلمنامه:
+            </label>
+            <textarea
+              id="dialogue-textarea-inline"
+              class="segment-textarea dialogue-inline-textarea"
+              rows="6"
+              placeholder="علی: سلام چطوری؟&#10;سارا: مرسی خوبم.&#10;علی: خوشحالم که حالت خوبه."
+            ></textarea>
+
+            <div class="dialogue-speakers-box">
+              <div class="dialogue-speakers-header">
+                <span class="control-label font-semibold">گوینده شخصیت‌ها:</span>
+                <span class="text-xs text-muted">برای هر شخصیت نام‌برده در متن، گوینده مورد نظر را انتخاب کنید</span>
+              </div>
+              <div id="dialogue-inline-char-list" class="dialogue-inline-char-list">
+                <span class="text-xs text-muted">با نوشتن دیالوگ (مانند «علی: سلام»)، شخصیت‌ها اینجا لیست می‌شوند.</span>
+              </div>
+            </div>
+
+            <div class="dialogue-panel-actions">
+              <button type="button" id="btn-dialogue-apply-inline" class="btn btn-primary">
+                ✅ اعمال
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Segments List (shown in حالت عادی) -->
+        <div id="segment-list" class="segment-list-container">
+          <!-- Rendered in ui.js -->
+        </div>
+      </section>
+
+      <!-- Voice Library Section (Clips) -->
+      <section class="content-section library-section" aria-labelledby="section-library-title">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 id="section-library-title">
+              کتابخانه ویس‌ها
+              <span id="library-count-badge" class="badge badge-accent">0</span>
+            </h2>
+            <span class="text-xs text-muted">کلیپ‌های مستقل تبدیل‌شده آماده ادغام و دانلود</span>
+          </div>
+          <div class="section-actions">
+            <div class="btn-group">
+              <button id="btn-select-all" class="btn btn-secondary btn-sm">انتخاب همه</button>
+              <button id="btn-select-none" class="btn btn-secondary btn-sm">هیچ‌کدام</button>
+              <button id="btn-select-invert" class="btn btn-secondary btn-sm">معکوس</button>
+            </div>
+            <button id="btn-clear-library" class="btn btn-danger btn-sm">
+              پاک‌سازی کتابخانه
+            </button>
+          </div>
+        </div>
+
+        <div id="library-summary-stats" class="library-summary text-muted text-sm">
+          <!-- Dynamic Stats -->
+        </div>
+
+        <!-- Clips List -->
+        <div id="clip-list" class="clip-list-container">
+          <!-- Rendered in ui.js -->
+        </div>
+      </section>
+
+      <!-- Final Merged Audio Section -->
+      <section class="content-section final-audio-section" aria-labelledby="section-final-title">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 id="section-final-title">ویس کامل نهایی</h2>
+            <span class="text-xs text-muted">ادغام کلیپ‌های انتخاب‌شده بر اساس ترتیب کتابخانه با وقفه‌های مستقل</span>
+          </div>
+          <div class="section-actions">
+            <button id="btn-merge-final" class="btn btn-success" disabled>
+              🧩 ساخت ویس کامل
+            </button>
+            <button id="btn-download-srt" class="btn btn-secondary" disabled title="دانلود فایل زیرنویس SRT بر اساس ویس کامل فعلی">
+              📄 دانلود زیرنویس (SRT)
+            </button>
+          </div>
+        </div>
+
+        <div id="final-audio-container">
+          <!-- Rendered in ui.js -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal Backdrop -->
+  <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+  <!-- Custom Accessible Confirmation Modal -->
+  <div id="confirm-modal" class="modal card hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div class="modal-header">
+      <h3 id="confirm-modal-title">تأیید عملیات</h3>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-modal-message"></p>
+    </div>
+    <div class="modal-footer">
+      <button id="confirm-modal-cancel" class="btn btn-secondary">انصراف</button>
+      <button id="confirm-modal-ok" class="btn btn-primary">تأیید</button>
+    </div>
+  </div>
+
+  <!-- Add / Edit Voice Modal -->
+  <div id="voice-modal" class="modal card hidden" role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
+    <div class="modal-header">
+      <h3 id="voice-modal-title">افزودن صدای جدید</h3>
+    </div>
+    <form id="voice-form">
+      <div class="modal-body">
+        <label class="form-group">
+          <span class="form-label">نام نمایشی صدا:</span>
+          <input type="text" id="voice-display-name" class="input-text" placeholder="مثلاً: سهراب (روایت آرام)" required>
+        </label>
+
+        <label class="form-group">
+          <span class="form-label">صدای فنی موتور (Engine Voice):</span>
+          <select id="voice-engine-select" class="input-select" required>
+            <!-- Loaded dynamically from /api/voices -->
+          </select>
+        </label>
+
+        <div class="form-group">
+          <span class="form-label">تگ‌ها (با اینتر یا کامای فارسی «،» اضافه کنید):</span>
+          <input type="text" id="voice-tag-input" class="input-text" list="tag-suggestions" placeholder="تایپ کنید و اینتر بزنید...">
+          <datalist id="tag-suggestions">
+            <!-- Autocomplete suggestions -->
+          </datalist>
+          <div id="voice-tag-chips" class="tag-chips-wrapper modal-tag-chips">
+            <!-- Rendered tags -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-voice-cancel" class="btn btn-secondary">انصراف</button>
+        <button type="submit" id="btn-voice-save" class="btn btn-primary">ذخیره صدا</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Auto-split Text Modal -->
+  <div id="split-modal" class="modal card hidden" role="dialog" aria-modal="true" aria-labelledby="split-modal-title">
+    <div class="modal-header">
+      <h3 id="split-modal-title">تقسیم خودکار متن به پاراگراف‌ها</h3>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-muted mb-2">
+        متن بلند خود را در کادر زیر وارد کنید. متن بر اساس خط‌های خالی (Double Enter) به پاراگراف‌های مجزا تقسیم خواهد شد:
+      </p>
+      <textarea id="split-textarea" class="input-textarea" rows="8" placeholder="متن بلند خود را اینجا پیست کنید..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="btn-split-cancel" class="btn btn-secondary">انصراف</button>
+      <button type="button" id="btn-split-apply" class="btn btn-primary">اعمال و تقسیم متن</button>
+    </div>
+  </div>
+
+  <!-- Pronunciation Dictionary Modal -->
+  <div id="dict-modal" class="modal card hidden" role="dialog" aria-modal="true" aria-labelledby="dict-modal-title">
+    <div class="modal-header">
+      <h3 id="dict-modal-title">📖 دیکشنری تلفظ کلمات و اختصارات</h3>
+    </div>
+    <div class="modal-body">
+      <p class="text-xs text-muted mb-2">
+        کلمات، اختصارات یا اصطلاحاتی که می‌خواهید قبل از ارسال به موتور تبدیل گفتار تغییر کنند را اینجا تعریف کنید.
+      </p>
+
+      <form id="dict-add-form" class="dict-add-row">
+        <input type="text" id="dict-input-phrase" class="input-text" placeholder="کلمه یا عبارت مبدأ (مثلاً TTS)" required />
+        <span class="text-muted">➔</span>
+        <input type="text" id="dict-input-replacement" class="input-text" placeholder="تلفظ / نوشتار جایگزین (مثلاً تی‌تی‌اس)" required />
+        <button type="submit" class="btn btn-primary btn-sm">+ افزودن</button>
+      </form>
+
+      <div class="dict-table-container">
+        <div id="dict-items-list" class="dict-items-list">
+          <!-- Rendered in ui.js -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="btn-dict-close" class="btn btn-secondary">بستن</button>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcuts-modal" class="modal card hidden" role="dialog" aria-modal="true" aria-labelledby="shortcuts-modal-title">
+    <div class="modal-header">
+      <h3 id="shortcuts-modal-title">⌨️ میانبرهای کیبورد</h3>
+    </div>
+    <div class="modal-body">
+      <ul class="shortcut-list">
+        <li><span><kbd>Ctrl</kbd> + <kbd>Enter</kbd></span><span>تبدیل پاراگراف فعال</span></li>
+        <li><span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Enter</kbd></span><span>تبدیل همهٔ پاراگراف‌های آماده</span></li>
+        <li><span><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Y</kbd></span><span>واگرد / انجام مجدد پاراگراف‌ها (خارج از کادر متن)</span></li>
+        <li><span><kbd>Ctrl</kbd> + <kbd>/</kbd></span><span>نمایش/بستن این فهرست</span></li>
+        <li><span><kbd>Esc</kbd></span><span>بستن پنجرهٔ باز</span></li>
+      </ul>
+      <p class="text-xs text-muted mt-1">در مک به‌جای Ctrl از ⌘ استفاده کنید. داخل کادرهای متن، Ctrl+Z و Ctrl+Y همان واگرد/انجام مجدد خود مرورگر هستند.</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="btn-shortcuts-close" class="btn btn-secondary">بستن</button>
+    </div>
+  </div>
+
+  <!-- Main ES Module Script -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
