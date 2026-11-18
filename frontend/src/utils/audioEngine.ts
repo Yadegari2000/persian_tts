@@ -1,5 +1,5 @@
 import { CONFIG } from '../config/config';
-import type { AudioCacheEntry, Clip, ClipSnapshot, EngineVoiceOption } from '../types/tts';
+import type { AudioCacheEntry, Clip, ClipSnapshot } from '../types/tts';
 
 const SAMPLE_RATE = 22050;
 const objectUrlCache = new Map<string, string>();
@@ -229,18 +229,6 @@ function hashString(str: string): string {
 export function buildCacheKey(preparedText: string, engineVoice: string, rate: number): string {
   const text = String(preparedText ?? '');
   return `v1|${engineVoice}|${normalizeRate(rate)}|${text.length}|${hashString(text)}`;
-}
-
-export async function getEngineVoices(signal?: AbortSignal | null): Promise<EngineVoiceOption[]> {
-  if (CONFIG.MOCK) {
-    await waitWithSignal(120, signal);
-    return CONFIG.ENGINE_VOICES;
-  }
-  const response = await fetch(`${CONFIG.BASE_URL}/api/voices`, { signal });
-  if (!response.ok) {
-    throw new Error(`خطا در دریافت صداها (کد ${response.status})`);
-  }
-  return response.json();
 }
 
 export interface SynthesizeParams {
@@ -643,8 +631,10 @@ export function applyCutToAudio(
   }
 
   const totalSec = pcm.length / SAMPLE_RATE;
-  const sSec = Math.max(0, Math.min(totalSec - 0.1, startSec));
-  const eSec = Math.max(sSec + 0.1, Math.min(totalSec, endSec));
+  const rawStart = Number.isFinite(startSec) ? startSec : 0;
+  const rawEnd = Number.isFinite(endSec) ? endSec : totalSec;
+  const sSec = Math.max(0, Math.min(totalSec - 0.1, Math.min(rawStart, rawEnd)));
+  const eSec = Math.max(sSec + 0.1, Math.min(totalSec, Math.max(rawStart, rawEnd)));
   const startSample = Math.min(pcm.length, Math.floor(sSec * SAMPLE_RATE));
   const endSample = Math.min(pcm.length, Math.floor(eSec * SAMPLE_RATE));
 

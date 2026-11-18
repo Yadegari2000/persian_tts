@@ -16,6 +16,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 import { CONFIG } from '../src/config/config.ts';
 import {
   buildVoiceBankStoragePayload,
+  computeClipDropIndex,
   createFreshSessionState,
   loadInitialState,
 } from '../src/context/TtsContext.tsx';
@@ -24,6 +25,7 @@ import * as audioEngine from '../src/utils/audioEngine.ts';
 import {
   convertNumbersInText,
   normalizePersianChars,
+  numberToPersianWords,
   parseDialogueScript,
   prepareText,
 } from '../src/utils/text.ts';
@@ -328,4 +330,106 @@ test('audioEngine: high-res peaks resampling and master normalize/fade effects',
   assert.ok(norm.durationSec > 0.5);
   const faded = audioEngine.applyAudioMasterEffect(norm.id, 'fade', norm.durationSec);
   assert.ok(Math.abs(faded.durationSec - norm.durationSec) <= 0.05);
+});
+
+test('prepareText edge cases: decimals, times, colon counts, leading zeros, case-insensitive dict, multiline', () => {
+  assert.equal(numberToPersianWords('000'), 'صفر');
+  assert.equal(numberToPersianWords('-000'), 'صفر');
+
+  const dict = [
+    { id: 'd1', phrase: 'TTS', replacement: 'تی‌تی‌اس' },
+    { id: 'd2', phrase: 'OpenAI', replacement: 'اوپن‌ای‌آی' },
+  ];
+
+  // Decimals (3.14), times (10:30), URLs, and phone numbers must stay intact through full prepareText pipeline
+  const complexInput = [
+    'عدد پی برابر 3.14 است و جلسه ساعت 10:30 برگزار مي شود.',
+    'تعداد:5 عدد با شماره تماس 09123456789 و ارزش -00 و 000.',
+    'آدرس https://example.com/v2/tts برای tts و openai ثبت شد.',
+  ].join('\n');
+
+  const prepared = prepareText(complexInput, dict);
+  assert.ok(prepared.includes('3.14'), `Decimal corrupted: ${prepared}`);
+  assert.ok(prepared.includes('10:30'), `Time corrupted: ${prepared}`);
+  assert.ok(prepared.includes('09123456789'), `Phone number corrupted: ${prepared}`);
+  assert.ok(prepared.includes('https://example.com/v2/تی‌تی‌اس') || prepared.includes('https://example.com/v2/tts'));
+  assert.ok(prepared.includes('تی‌تی‌اس و اوپن‌ای‌آی'), `Case-insensitive dict failed: ${prepared}`);
+  assert.ok(prepared.includes('پنج عدد'), `Colon-adjacent number failed: ${prepared}`);
+  assert.ok(prepared.includes('برگزار می‌شود'), `ZWNJ prefix failed: ${prepared}`);
+  assert.ok(prepared.includes('\n'), 'Multiline structure should be preserved');
+});
+
+test('parseDialogueScript edge cases: URLs, tatweel/Arabic names, comments, invalid character markers', () => {
+  const script = [
+    'https://example.com/live: معرفی سرویس',
+    'http://test.ir/path',
+    'علـــي: سلام دنیا',
+    'سارا: // این خط کامنت نباید جداگانه بیاید یا به راوی بیفتد',
+    'نام خیلی طولانی تر از سی کاراکتر برای تست معتبر نبودن: متن عادی',
+    'شخصیت123: نباید نام گوینده باشد',
+    'مریم كریمی： سلام به همه',
+  ].join('\n');
+
+  const parsed = parseDialogueScript(script);
+  // https:// and http:// fall back to راوی, tatweel/Arabic normalized to علی and مریم کریمی
+  assert.ok(parsed.characters.includes('راوی'));
+  assert.ok(parsed.characters.includes('علی'));
+  assert.ok(parsed.characters.includes('مریم کریمی'));
+  assert.ok(!parsed.characters.includes('https'));
+  assert.ok(!parsed.characters.includes('http'));
+  assert.ok(!parsed.characters.includes('شخصیت123'));
+
+  assert.equal(parsed.lines[0].character, 'راوی');
+  assert.equal(parsed.lines[1].character, 'راوی');
+  assert.deepEqual(parsed.lines[2], { character: 'علی', text: 'سلام دنیا' });
+  assert.deepEqual(parsed.lines[6], { character: 'مریم کریمی', text: 'سلام به همه' });
+});
+
+test('audioEngine: applyCutToAudio handles swapped bounds and non-finite inputs safely', async () => {
+  const makeClip = (id: string, durationSec: number): Clip => ({
+    id,
+    segmentId: null,
+    text: `متن ${id}`,
+    preparedText: `متن ${id}`,
+    voiceName: 'گوینده تست',
+    engineVoice: 'fa-male-narrator-1',
+    voiceTags: [],
+    speakerColor: 'sky',
+    rate: 1,
+    pauseAfterMs: 0,
+    audioId: `bounds_${id}`,
+    audioUrl: `/api/audio/bounds_${id}`,
+    durationSec,
+    trimStartSec: 0,
+    trimEndSec: durationSec,
+    createdAt: new Date().toISOString(),
+    selected: true,
+  });
+
+  const merged = await audioEngine.mergeClips([makeClip('a', 4.0)], [0]);
+  // Swapped bounds [3.0 .. 1.0] should normalize to cutting [1.0 .. 3.0], leaving ~2.0s
+  const swappedCut = audioEngine.applyCutToAudio(merged.id, 'cut-middle', 3.0, 1.0, merged.durationSec);
+  assert.ok(Math.abs(swappedCut.durationSec - 2.0) <= 0.05);
+
+  // Out-of-bounds / NaN clamped gracefully in keep-range
+  const kept = audioEngine.applyCutToAudio(merged.id, 'keep-range', -5, Number.NaN, merged.durationSec);
+  assert.ok(Math.abs(kept.durationSec - 4.0) <= 0.05);
+});
+
+test('computeClipDropIndex: accurately computes target index for top/bottom half drops and guards no-ops', () => {
+  // List [0, 1, 2]:
+  // Dragging 0 onto 2 (bottom half) -> index 2 ([1, 2, 0])
+  assert.equal(computeClipDropIndex(0, 2, true), 2);
+  // Dragging 0 onto 2 (top half) -> index 1 ([1, 0, 2])
+  assert.equal(computeClipDropIndex(0, 2, false), 1);
+  // Dragging 2 onto 0 (bottom half) -> index 1 ([0, 2, 1])
+  assert.equal(computeClipDropIndex(2, 0, true), 1);
+  // Dragging 2 onto 0 (top half) -> index 0 ([2, 0, 1])
+  assert.equal(computeClipDropIndex(2, 0, false), 0);
+  // Adjacent no-ops: dragging 0 onto top of 1 keeps 0; dragging 1 onto bottom of 0 keeps 1
+  assert.equal(computeClipDropIndex(0, 1, false), 0);
+  assert.equal(computeClipDropIndex(1, 0, true), 1);
+  // Same item or negative index guards
+  assert.equal(computeClipDropIndex(1, 1, true), 1);
+  assert.equal(computeClipDropIndex(-1, 2, false), -1);
 });

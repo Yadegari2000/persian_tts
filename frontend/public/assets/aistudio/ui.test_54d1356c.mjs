@@ -2,7 +2,9 @@ import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const html = fs.readFileSync('./index.html', 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+const html = fs
+  .readFileSync(new URL('./index_788bfce6.html', import.meta.url), 'utf8')
+  .replace(/<script[^>]*main_82dbec63\.js[^>]*><\/script>/, '');
 const dom = new JSDOM(html, { url: 'http://localhost/', pretendToBeVisual: true });
 const w = dom.window;
 for (const k of ['window','document','localStorage','Element','HTMLElement','KeyboardEvent','Event','Audio','DOMException','navigator']) {
@@ -15,9 +17,9 @@ const blobs = new Map();
 const origCreate = URL.createObjectURL.bind(URL);
 URL.createObjectURL = (b) => { const u = origCreate(b); blobs.set(u, b); return u; };
 
-const { CONFIG } = await import('./js/config.js');
-const store = await import('./js/state.js');
-const ui = await import('./js/ui.js');
+const { CONFIG } = await import('./config_ee5ea529.js');
+const store = await import('./state_d8f7fb5f.js');
+const ui = await import('./ui_9ebf09b5.js');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));

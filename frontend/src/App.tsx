@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { MotionConfig } from 'motion/react';
 import { ClipLibrarySection } from './components/ClipLibrarySection';
 import { FinalAudioSection } from './components/FinalAudioSection';
 import { Header } from './components/Header';
@@ -36,13 +37,14 @@ function StudioWorkspace() {
     showToast,
   } = useTts();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [editingVoice, setEditingVoice] = useState<Voice | null>(null);
   const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [dictModalOpen, setDictModalOpen] = useState(false);
 
   const lastActiveSegmentIdRef = useRef<string | null>(null);
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -94,7 +96,7 @@ function StudioWorkspace() {
         }
 
         const id = card?.dataset.segmentId || lastActiveSegmentIdRef.current;
-        if (!id || !segments.some((s) => s.id === id)) {
+        if (!id || !segmentsRef.current.some((s) => s.id === id)) {
           showToast('ابتدا روی یک پاراگراف کلیک کنید، سپس Ctrl+Enter را بزنید.', 'info');
           return;
         }
@@ -109,7 +111,6 @@ function StudioWorkspace() {
     voiceModalOpen,
     splitModalOpen,
     dictModalOpen,
-    segments,
     undo,
     redo,
     convertSegmentById,
@@ -117,39 +118,68 @@ function StudioWorkspace() {
     showToast,
   ]);
 
+  const handleScrollToVoices = useCallback(() => {
+    const el = document.getElementById('sidebar-voices');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
+  const handleOpenSplitModal = useCallback(() => setSplitModalOpen(true), []);
+  const handleFocusSegment = useCallback((id: string) => {
+    lastActiveSegmentIdRef.current = id;
+  }, []);
+  const handleAddVoice = useCallback(() => {
+    setEditingVoice(null);
+    setVoiceModalOpen(true);
+  }, []);
+  const handleEditVoice = useCallback((voice: Voice) => {
+    setEditingVoice(voice);
+    setVoiceModalOpen(true);
+  }, []);
+  const handleOpenDict = useCallback(() => setDictModalOpen(true), []);
+  const handleCloseVoiceModal = useCallback(() => setVoiceModalOpen(false), []);
+  const handleCloseSplitModal = useCallback(() => setSplitModalOpen(false), []);
+  const handleCloseDictModal = useCallback(() => setDictModalOpen(false), []);
+
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-50">
-      <Header
-        onToggleDrawer={() => setDrawerOpen((prev) => !prev)}
-        onOpenDict={() => setDictModalOpen(true)}
+    <div className="relative min-h-screen text-[var(--text-primary)]">
+      {/* Exactly ONE soft ambient glow spot (white-blue, opacity ~0.05, blur 160px, top-center, pointer-events: none) */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed left-1/2 -top-40 -translate-x-1/2 z-0 h-[480px] w-[680px] rounded-full blur-[160px]"
+        style={{ background: 'radial-gradient(circle, rgba(233, 237, 245, 0.05), transparent 70%)' }}
       />
 
-      <div className="mx-auto grid max-w-[1440px] grid-cols-1 lg:grid-cols-[290px_1fr]">
-        <SidebarVoices
-          drawerOpen={drawerOpen}
-          onCloseDrawer={() => setDrawerOpen(false)}
-          onAddVoice={() => {
-            setEditingVoice(null);
-            setVoiceModalOpen(true);
-          }}
-          onEditVoice={(voice) => {
-            setEditingVoice(voice);
-            setVoiceModalOpen(true);
-          }}
+      <div className="relative z-10">
+        <Header
+          onScrollToVoices={handleScrollToVoices}
+          onOpenDict={handleOpenDict}
         />
 
-        <main className="flex w-full flex-col gap-7 p-4 sm:p-6">
-          <ParagraphsSection
-            onOpenSplitModal={() => setSplitModalOpen(true)}
-            onFocusSegment={(id) => {
-              lastActiveSegmentIdRef.current = id;
-            }}
-          />
+        <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-6 px-4 py-6 min-[900px]:grid-cols-[340px_1fr] min-[900px]:gap-[28px] min-[900px]:px-8 min-[900px]:py-8">
+          <div className="order-2 min-[900px]:order-1">
+            <SidebarVoices
+              onAddVoice={handleAddVoice}
+              onEditVoice={handleEditVoice}
+            />
+          </div>
 
-          <ClipLibrarySection />
+          <main className="order-1 flex w-full min-w-0 flex-col gap-6 min-[900px]:order-2">
+            <ParagraphsSection
+              onOpenSplitModal={handleOpenSplitModal}
+              onFocusSegment={handleFocusSegment}
+            />
 
-          <FinalAudioSection />
-        </main>
+            <div className="h-[1px] bg-[var(--border-subtle)]" aria-hidden="true" />
+
+            <ClipLibrarySection />
+
+            <div className="h-[1px] bg-[var(--border-subtle)]" aria-hidden="true" />
+
+            <FinalAudioSection />
+          </main>
+        </div>
       </div>
 
       {/* Modals & Toasts */}
@@ -157,10 +187,10 @@ function StudioWorkspace() {
       <VoiceModal
         open={voiceModalOpen}
         editingVoice={editingVoice}
-        onClose={() => setVoiceModalOpen(false)}
+        onClose={handleCloseVoiceModal}
       />
-      <SplitTextModal open={splitModalOpen} onClose={() => setSplitModalOpen(false)} />
-      <DictionaryModal open={dictModalOpen} onClose={() => setDictModalOpen(false)} />
+      <SplitTextModal open={splitModalOpen} onClose={handleCloseSplitModal} />
+      <DictionaryModal open={dictModalOpen} onClose={handleCloseDictModal} />
       <ToastContainer />
     </div>
   );
@@ -168,8 +198,10 @@ function StudioWorkspace() {
 
 export default function App() {
   return (
-    <TtsProvider>
-      <StudioWorkspace />
-    </TtsProvider>
+    <MotionConfig reducedMotion="user">
+      <TtsProvider>
+        <StudioWorkspace />
+      </TtsProvider>
+    </MotionConfig>
   );
 }

@@ -5,7 +5,7 @@
  * independent clip snapshots, undo/redo history, and project export/import.
  */
 
-import { CONFIG } from './config.js';
+import { CONFIG } from './config_ee5ea529.js';
 
 // Observer subscribers
 const listeners = new Set();

@@ -1,15 +1,49 @@
-import React, { useRef } from 'react';
-import { BookOpen, Download, Menu, Mic2, Redo2, Undo2, Upload } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  BookOpen,
+  Download,
+  MoreVertical,
+  Redo2,
+  Undo2,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { CONFIG } from '../config/config';
 import { useTts } from '../context/TtsContext';
 
 interface HeaderProps {
-  onToggleDrawer: () => void;
+  onScrollToVoices: () => void;
   onOpenDict: () => void;
 }
 
-export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
-  const { canUndo, canRedo, undo, redo, exportProjectJSON, importProjectJSON, showConfirm, showToast } = useTts();
+export const Header = React.memo(function Header({ onScrollToVoices, onOpenDict }: HeaderProps) {
+  const {
+    batch,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    exportProjectJSON,
+    importProjectJSON,
+    showConfirm,
+    showToast,
+  } = useTts();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [mobileMenuOpen]);
 
   const handleUndo = () => {
     if (undo()) {
@@ -24,6 +58,7 @@ export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
   };
 
   const handleExport = () => {
+    setMobileMenuOpen(false);
     try {
       const jsonStr = exportProjectJSON();
       const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -42,6 +77,7 @@ export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMobileMenuOpen(false);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -62,7 +98,10 @@ export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
     reader.onload = (event) => {
       try {
         const res = importProjectJSON(String(event.target?.result || ''));
-        showToast(`پروژه (نسخه ${res.version}) با ${res.segmentCount} پاراگراف و ${res.clipCount} کلیپ بازیابی شد.`, 'success');
+        showToast(
+          `پروژه (نسخه ${res.version}) با ${res.segmentCount} پاراگراف و ${res.clipCount} کلیپ بازیابی شد.`,
+          'success'
+        );
       } catch (err: unknown) {
         showToast(`خطا در بازیابی پروژه: ${(err as Error).message}`, 'error');
       } finally {
@@ -73,47 +112,80 @@ export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[#182338] bg-[#0b111e]/95 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1440px] flex-col items-center gap-3 px-4 py-3.5 sm:px-6">
-        {/* Top Row: Brand Lockup */}
-        <div className="flex w-full items-center justify-between gap-4 lg:justify-center">
+    <header className="sticky top-0 z-40 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/90 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-3 px-4 min-[900px]:px-8">
+        {/* Brand & Mobile Voice Bank Scroll Trigger */}
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            onClick={onToggleDrawer}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#223254] bg-[#131d35] text-slate-200 hover:border-sky-400 lg:hidden"
+            onClick={onScrollToVoices}
+            className="btn-studio-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ease-out min-[900px]:hidden"
             aria-label="نمایش بانک گویندگان"
           >
-            <Menu className="h-5 w-5" />
+            <Users className="h-4 w-4" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/20 to-sky-600/20 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.18)]">
-              <Mic2 className="h-5 w-5" />
-            </div>
-            <div className="text-right">
-              <h1 className="text-base font-extrabold tracking-tight text-slate-50 sm:text-lg">
-                استودیو تبدیل متن به گفتار فارسی چندصدایی
-              </h1>
-              <p className="text-xs text-slate-400">
-                ترکیب گویندگان هوشمند، پیش‌پردازش متن، حالت دیالوگ و ادغام حرفه‌ای صدا
-              </p>
+          {/* Studio Emblem */}
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--bg-card)]">
+            <div className="flex h-4 items-end gap-[2.5px]" aria-hidden="true">
+              <span
+                className={`w-[2.5px] rounded-full bg-[var(--ui-accent)] ${
+                  batch.active ? 'h-4 animate-eq-1' : 'h-2.5'
+                }`}
+              />
+              <span
+                className={`w-[2.5px] rounded-full bg-[var(--text-primary)] ${
+                  batch.active ? 'h-4 animate-eq-2' : 'h-4'
+                }`}
+              />
+              <span
+                className={`w-[2.5px] rounded-full bg-[var(--text-muted)] ${
+                  batch.active ? 'h-4 animate-eq-3' : 'h-3'
+                }`}
+              />
             </div>
           </div>
 
-          <div className="w-10 lg:hidden" />
+          <div className="min-w-0 text-right">
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-4 w-[2.5px] shrink-0 rounded-full bg-[var(--ui-accent)]"
+              />
+              <h1 className="truncate text-base font-bold tracking-tight text-[var(--text-primary)] sm:text-lg">
+                استودیو تبدیل متن به گفتار فارسی چندصدایی
+              </h1>
+            </div>
+            <div className="hidden items-center gap-2 text-xs font-normal text-[var(--text-secondary)] sm:flex">
+              <span>پیش‌پردازش هوشمند و ادغام چندصدایی</span>
+              <span aria-hidden="true" className="text-[var(--text-muted)]">
+                ·
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    CONFIG.MOCK ? 'bg-[var(--warning)]' : 'bg-[var(--success)]'
+                  }`}
+                />
+                <span className={CONFIG.MOCK ? 'text-[var(--warning)]' : 'text-[var(--success)]'}>
+                  {CONFIG.MOCK ? 'شبیه‌ساز MOCK فعال' : 'متصل به سرور Backend'}
+                </span>
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        {/* Top Toolbar Buttons (Transparent, Icon + Small Text, 8px Gap) */}
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={handleUndo}
             disabled={!canUndo}
             title="واگرد تغییرات پاراگراف‌ها (Ctrl+Z)"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#223254] bg-[#131c31] px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/60 hover:bg-[#1a2642] disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap shrink-0"
+            aria-label="واگرد"
+            className="btn-studio-secondary inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-medium transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap shrink-0"
           >
-            <Undo2 className="h-3.5 w-3.5 text-slate-400" />
-            <span>واگرد (Ctrl+Z)</span>
+            <Undo2 className="h-3.5 w-3.5" />
           </button>
 
           <button
@@ -121,48 +193,118 @@ export function Header({ onToggleDrawer, onOpenDict }: HeaderProps) {
             onClick={handleRedo}
             disabled={!canRedo}
             title="انجام مجدد تغییرات پاراگراف‌ها (Ctrl+Y)"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#223254] bg-[#131c31] px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/60 hover:bg-[#1a2642] disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap shrink-0"
+            aria-label="انجام مجدد"
+            className="btn-studio-secondary inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap shrink-0"
           >
-            <Redo2 className="h-3.5 w-3.5 text-slate-400" />
-            <span>مجدد (Ctrl+Y)</span>
+            <Redo2 className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">مجدد</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onOpenDict}
-            title="مدیریت دیکشنری تلفظ اختصاصی"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#223254] bg-[#131c31] px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/60 hover:bg-[#1a2642] whitespace-nowrap shrink-0"
-          >
-            <BookOpen className="h-3.5 w-3.5 text-amber-400" />
-            <span>دیکشنری تلفظ</span>
-          </button>
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={onOpenDict}
+              title="مدیریت دیکشنری تلفظ اختصاصی"
+              className="btn-studio-secondary inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all duration-200 ease-out whitespace-nowrap shrink-0"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              <span>دیکشنری تلفظ</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={handleExport}
-            title="صادرات تمام داده‌ها به صورت فایل JSON"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#223254] bg-[#131c31] px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/60 hover:bg-[#1a2642] whitespace-nowrap shrink-0"
-          >
-            <Download className="h-3.5 w-3.5 text-sky-400" />
-            <span>پشتیبان‌گیری</span>
-          </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              title="صادرات تمام داده‌ها به صورت فایل JSON"
+              className="btn-studio-secondary inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all duration-200 ease-out whitespace-nowrap shrink-0"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>پشتیبان‌گیری</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            title="بارگذاری پروژه از فایل JSON"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#223254] bg-[#131c31] px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-emerald-400/60 hover:bg-[#1a2642] whitespace-nowrap shrink-0"
-          >
-            <Upload className="h-3.5 w-3.5 text-emerald-400" />
-            <span>بازیابی</span>
-          </button>
-          <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} className="hidden" />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="بارگذاری پروژه از فایل JSON"
+              className="btn-studio-secondary inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all duration-200 ease-out whitespace-nowrap shrink-0"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span>بازیابی</span>
+            </button>
+          </div>
 
-          <span className="inline-flex h-7 items-center rounded-full border border-[#223254] bg-[#131c31] px-3 text-[11px] font-medium text-slate-400 whitespace-nowrap shrink-0">
-            شبیه‌ساز MOCK فعال
-          </span>
+          {/* Mobile Overflow Tools Menu (< sm) */}
+          <div ref={menuRef} className="relative sm:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label="ابزارهای بیشتر"
+              aria-expanded={mobileMenuOpen}
+              className="btn-studio-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200"
+            >
+              {mobileMenuOpen ? <X className="h-4 w-4" /> : <MoreVertical className="h-4 w-4" />}
+            </button>
+
+            <AnimatePresence>
+              {mobileMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="glass-card absolute left-0 top-12 z-50 w-56 origin-top-left bg-[var(--bg-elevated)] p-2 shadow-2xl"
+                >
+                  <div className="mb-1.5 flex items-center gap-2 border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        CONFIG.MOCK ? 'bg-[var(--warning)]' : 'bg-[var(--success)]'
+                      }`}
+                    />
+                    <span>{CONFIG.MOCK ? 'شبیه‌ساز MOCK فعال' : 'متصل به سرور Backend'}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenDict();
+                    }}
+                    className="flex min-h-[42px] w-full items-center gap-2.5 rounded-xl px-3 text-right text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    <span>دیکشنری تلفظ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExport}
+                    className="flex min-h-[42px] w-full items-center gap-2.5 rounded-xl px-3 text-right text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>پشتیبان‌گیری JSON</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex min-h-[42px] w-full items-center gap-2.5 rounded-xl px-3 text-right text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span>بازیابی پروژه</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
         </div>
       </div>
     </header>
   );
-}
+});

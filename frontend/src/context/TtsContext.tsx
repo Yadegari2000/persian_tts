@@ -267,6 +267,16 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
 
   const currentPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      toastTimersRef.current.forEach((timer) => clearTimeout(timer));
+      toastTimersRef.current.clear();
+      batchControllerRef.current?.abort();
+    };
+  }, []);
+
   useEffect(() => {
     try {
       const payload = buildVoiceBankStoragePayload(data.voices, data.allTags, data.tagFilter);
@@ -278,13 +288,20 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = generateId('toast');
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
+    setToasts((prev) => [...prev.slice(-3), { id, message, type }]);
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(id);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
+    toastTimersRef.current.set(id, timer);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
@@ -431,10 +448,20 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
     const cleanPhrase = phrase.trim();
     const cleanReplacement = replacement.trim();
     if (!cleanPhrase) return;
-    setData((prev) => ({
-      ...prev,
-      dictionary: [...prev.dictionary, { id: generateId('dict'), phrase: cleanPhrase, replacement: cleanReplacement }],
-    }));
+    setData((prev) => {
+      const existingIdx = prev.dictionary.findIndex(
+        (d) => d.phrase.trim().toLowerCase() === cleanPhrase.toLowerCase()
+      );
+      if (existingIdx !== -1) {
+        const next = [...prev.dictionary];
+        next[existingIdx] = { ...next[existingIdx], phrase: cleanPhrase, replacement: cleanReplacement };
+        return { ...prev, dictionary: next };
+      }
+      return {
+        ...prev,
+        dictionary: [...prev.dictionary, { id: generateId('dict'), phrase: cleanPhrase, replacement: cleanReplacement }],
+      };
+    });
   }, []);
 
   const deleteDictionaryEntry = useCallback((id: string) => {
@@ -605,29 +632,37 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
     () => ({
       getCachedAudio: (key: string) => dataRef.current.audioCache[key] || null,
       setCachedAudio: (key: string, entry: AudioCacheEntry) => {
+        const curr = dataRef.current;
+        const nextCache = { ...curr.audioCache };
+        delete nextCache[key];
+        nextCache[key] = entry;
+        const keys = Object.keys(nextCache);
+        const max = CONFIG.CACHE_MAX_ENTRIES || 300;
         const evictedAudioIds: string[] = [];
+        for (let i = 0; i < keys.length - max; i++) {
+          const evicted = nextCache[keys[i]];
+          if (evicted?.audioId) evictedAudioIds.push(evicted.audioId);
+          delete nextCache[keys[i]];
+        }
         setData((prev) => {
-          const nextCache = { ...prev.audioCache };
-          delete nextCache[key];
-          nextCache[key] = entry;
-          const keys = Object.keys(nextCache);
-          const max = CONFIG.CACHE_MAX_ENTRIES || 300;
-          for (let i = 0; i < keys.length - max; i++) {
-            const evicted = nextCache[keys[i]];
-            if (evicted?.audioId) evictedAudioIds.push(evicted.audioId);
-            delete nextCache[keys[i]];
+          const updated = { ...prev.audioCache };
+          delete updated[key];
+          updated[key] = entry;
+          const uKeys = Object.keys(updated);
+          for (let i = 0; i < uKeys.length - max; i++) {
+            delete updated[uKeys[i]];
           }
-          if (evictedAudioIds.length > 0) {
-            const activeClipIds = new Set(prev.clips.map((c) => c.audioId));
-            const finalId = prev.finalAudio?.id;
-            evictedAudioIds.forEach((aid) => {
-              if (!activeClipIds.has(aid) && aid !== finalId) {
-                audioEngine.revokeAudioObjectUrl(aid);
-              }
-            });
-          }
-          return { ...prev, audioCache: nextCache };
+          return { ...prev, audioCache: updated };
         });
+        if (evictedAudioIds.length > 0) {
+          const activeClipIds = new Set(curr.clips.map((c) => c.audioId));
+          const finalId = curr.finalAudio?.id;
+          evictedAudioIds.forEach((aid) => {
+            if (!activeClipIds.has(aid) && aid !== finalId) {
+              audioEngine.revokeAudioObjectUrl(aid);
+            }
+          });
+        }
       },
       invalidateCacheEntry: (key: string) => {
         setData((prev) => {
@@ -936,16 +971,17 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
                 }
               : c
           );
-          if (prevAudioId && prevAudioId !== res.audioId) {
-            const stillUsedByClips = nextClips.some((c) => c.audioId === prevAudioId);
-            const stillUsedByFinal = prev.finalAudio?.id === prevAudioId;
-            const stillUsedByCache = Object.values(prev.audioCache).some((e) => e.audioId === prevAudioId);
-            if (!stillUsedByClips && !stillUsedByFinal && !stillUsedByCache) {
-              audioEngine.revokeAudioObjectUrl(prevAudioId);
-            }
-          }
           return { ...prev, clips: nextClips };
         });
+        if (prevAudioId && prevAudioId !== res.audioId) {
+          const latest = dataRef.current;
+          const stillUsedByClips = latest.clips.some((c) => c.id !== clipId && c.audioId === prevAudioId);
+          const stillUsedByFinal = latest.finalAudio?.id === prevAudioId;
+          const stillUsedByCache = Object.values(latest.audioCache).some((e) => e.audioId === prevAudioId);
+          if (!stillUsedByClips && !stillUsedByFinal && !stillUsedByCache) {
+            audioEngine.revokeAudioObjectUrl(prevAudioId);
+          }
+        }
         showToast(`گوینده کلیپ به «${voice.name}» تغییر یافت و صدا بازتولید شد.`, 'success');
       } catch (err: unknown) {
         showToast(`خطا در تغییر گوینده کلیپ: ${(err as Error).message}`, 'error');
@@ -1476,6 +1512,18 @@ export function TtsProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <TtsContext.Provider value={value}>{children}</TtsContext.Provider>;
+}
+
+export function computeClipDropIndex(
+  fromIndex: number,
+  toIndex: number,
+  isBottom: boolean
+): number {
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return fromIndex;
+  let targetIndex = toIndex;
+  if (isBottom && fromIndex > toIndex) targetIndex = toIndex + 1;
+  else if (!isBottom && fromIndex < toIndex) targetIndex = Math.max(0, toIndex - 1);
+  return targetIndex;
 }
 
 export function useTts(): TtsContextValue {

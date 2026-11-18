@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 const mem = new Map();
 globalThis.localStorage = { getItem: k => mem.has(k) ? mem.get(k) : null, setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k) };
 
-const { CONFIG } = await import('./config.js');
-const store = await import('./state.js');
-const api = await import('./api.js');
-const { parseDialogueScript, generateSrtContent } = await import('./text.js');
+const { CONFIG } = await import('./config_ee5ea529.js');
+const store = await import('./state_d8f7fb5f.js');
+const api = await import('./api_f8b62fe8.js');
+const { parseDialogueScript, generateSrtContent } = await import('./text_2ef28b06.js');
 
 let n = 0; const ok = (name) => console.log('✓', ++n, name);
 

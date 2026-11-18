@@ -42,7 +42,7 @@ function threeDigitsToWords(n: number): string {
 
 export function numberToPersianWords(numStr: string): string {
   const clean = numStr.trim();
-  if (clean === '0') return 'صفر';
+  if (/^-?0+$/.test(clean)) return 'صفر';
 
   const isNegative = clean.startsWith('-');
   const unsigned = isNegative ? clean.slice(1) : clean;
@@ -73,20 +73,24 @@ export function numberToPersianWords(numStr: string): string {
   }
 
   const result = wordsParts.join(' و ');
+  if (!result) return 'صفر';
   return isNegative ? `منفی ${result}` : result;
 }
 
 export function convertNumbersInText(text: string): string {
   const normalized = normalizeDigits(text);
 
-  return normalized.replace(/(?<![0-9/.\-_آ-یa-zA-Z])(-?[0-9]{1,12})(?![0-9/.\-_])/g, (match) => {
-    const unsigned = match.startsWith('-') ? match.slice(1) : match;
-    if (unsigned.startsWith('0') && unsigned.length > 1) {
-      return match;
+  return normalized.replace(
+    /(?<![0-9/.\-_آ-یa-zA-Z]|\d:)(-?[0-9]{1,12})(?![0-9/.\-_]|:\d)/g,
+    (match) => {
+      const unsigned = match.startsWith('-') ? match.slice(1) : match;
+      if (unsigned.startsWith('0') && unsigned.length > 1) {
+        return match;
+      }
+      if (/^-?0+$/.test(match)) return 'صفر';
+      return numberToPersianWords(match);
     }
-    if (match === '-0') return 'صفر';
-    return numberToPersianWords(match);
-  });
+  );
 }
 
 export function normalizePersianChars(text: string): string {
@@ -100,10 +104,13 @@ export function normalizePersianChars(text: string): string {
     .replace(/ـ+/g, '')
     .replace(/\u200E|\u200F|\u202A|\u202B|\u202C/g, '')
     .replace(/\u200c{2,}/g, '\u200c')
-    .replace(/(?<![آ-یa-zA-Z0-9\u200c])(ن?می)\s+(?=[آ-ی])/g, '$1\u200c')
-    .replace(/(?<=[آ-ی])\s+(ها|های|تر|ترین|ام|ات|اش|ایم|اید|اند)(?![آ-یa-zA-Z0-9\u200c])/g, '\u200c$1')
-    .replace(/\s*([.,!?;:؛،؟])\s*/g, '$1 ')
-    .replace(/\s{2,}/g, ' ')
+    .replace(/(?<![آ-یa-zA-Z0-9\u200c])(ن?می)[ \t]+(?=[آ-ی])/g, '$1\u200c')
+    .replace(/(?<=[آ-ی])[ \t]+(ها|های|تر|ترین|ام|ات|اش|ایم|اید|اند)(?![آ-یa-zA-Z0-9\u200c])/g, '\u200c$1')
+    // Normalize punctuation spacing WITHOUT corrupting decimals (3.14), times (10:30), or URLs (https://example.com)
+    .replace(/[ \t]*([,;؛،؟!?])(?![0-9۰-۹٠-٩])[ \t]*/g, '$1 ')
+    .replace(/(?<![0-9۰-۹٠-٩])[ \t]*([.:])(?![0-9۰-۹٠-٩a-zA-Z/])[ \t]*/g, '$1 ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -124,7 +131,7 @@ export function applyPronunciationDictionary(text: string, dictionary: Dictionar
     if (!phrase) continue;
 
     const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(?<![آ-یa-zA-Z0-9\u200c])${escaped}(?![آ-یa-zA-Z0-9\u200c])`, 'g');
+    const regex = new RegExp(`(?<![آ-یa-zA-Z0-9\u200c])${escaped}(?![آ-یa-zA-Z0-9\u200c])`, 'gi');
     processed = processed.replace(regex, replacement);
   }
 
@@ -138,7 +145,7 @@ export function prepareText(rawText: string, dictionary: DictionaryEntry[] = [])
     let result = normalizePersianChars(rawText);
     result = applyPronunciationDictionary(result, dictionary);
     result = convertNumbersInText(result);
-    return result.replace(/\s{2,}/g, ' ').trim();
+    return result.replace(/[ \t]{2,}/g, ' ').trim();
   } catch (err) {
     console.warn('Text preprocessing warning, using fallback:', err);
     return rawText.trim();
@@ -151,6 +158,7 @@ export function normalizeCharacterName(name: string): string {
   return String(name ?? '')
     .replace(/ي/g, 'ی')
     .replace(/ك/g, 'ک')
+    .replace(/ـ+/g, '')
     .replace(/[\u200E\u200F\u202A-\u202C]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -177,16 +185,18 @@ export function parseDialogueScript(rawText: string): {
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
 
-    const colonIdx = trimmed.search(/[:：]/);
-    if (colonIdx > 0) {
-      const name = normalizeCharacterName(trimmed.slice(0, colonIdx));
-      const text = trimmed.slice(colonIdx + 1).trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      const colonIdx = trimmed.search(/[:：]/);
+      if (colonIdx > 0) {
+        const name = normalizeCharacterName(trimmed.slice(0, colonIdx));
+        const text = trimmed.slice(colonIdx + 1).trim();
 
-      if (looksLikeCharacterName(name)) {
-        if (!text) continue;
-        characters.add(name);
-        lines.push({ character: name, text });
-        continue;
+        if (looksLikeCharacterName(name) && !text.startsWith('//')) {
+          if (!text) continue;
+          characters.add(name);
+          lines.push({ character: name, text });
+          continue;
+        }
       }
     }
 

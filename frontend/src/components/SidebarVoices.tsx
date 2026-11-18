@@ -1,18 +1,20 @@
-import { useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus, Trash2, Users, Volume2, X } from 'lucide-react';
-import { getSpeakerColorForVoice, SPEAKER_PALETTE } from '../config/config';
+import React, { useMemo, useState } from 'react';
+import { Loader2, Pencil, Plus, Trash2, Users, Volume2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { resolveVoiceVisualTheme } from '../config/config';
 import { useTts } from '../context/TtsContext';
 import type { Voice } from '../types/tts';
 import * as audioEngine from '../utils/audioEngine';
 
 interface SidebarVoicesProps {
-  drawerOpen: boolean;
-  onCloseDrawer: () => void;
   onAddVoice: () => void;
   onEditVoice: (voice: Voice) => void;
 }
 
-export function SidebarVoices({ drawerOpen, onCloseDrawer, onAddVoice, onEditVoice }: SidebarVoicesProps) {
+export const SidebarVoices = React.memo(function SidebarVoices({
+  onAddVoice,
+  onEditVoice,
+}: SidebarVoicesProps) {
   const {
     voices,
     allTags,
@@ -26,6 +28,11 @@ export function SidebarVoices({ drawerOpen, onCloseDrawer, onAddVoice, onEditVoi
   } = useTts();
 
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+
+  const activeVoiceIds = useMemo(
+    () => new Set(segments.map((s) => s.voiceId).filter(Boolean)),
+    [segments]
+  );
 
   const filteredVoices = useMemo(() => {
     const { selectedTags, mode, untagged } = tagFilter;
@@ -106,135 +113,170 @@ export function SidebarVoices({ drawerOpen, onCloseDrawer, onAddVoice, onEditVoi
   const isAllActive = tagFilter.selectedTags.length === 0 && !tagFilter.untagged;
 
   return (
-    <>
-      {drawerOpen && (
-        <div
-          onClick={onCloseDrawer}
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        aria-label="بانک گویندگان"
-        className={`fixed inset-y-0 right-0 z-50 flex w-[300px] flex-col gap-4 overflow-y-auto border-l border-[#182338] bg-[#0b1220] p-4 transition-transform duration-200 lg:sticky lg:top-[116px] lg:z-10 lg:h-[calc(100vh-116px)] lg:w-[290px] lg:translate-x-0 ${
-          drawerOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full lg:translate-x-0'
-        }`}
-      >
-        {/* Sidebar Header */}
-        <div className="flex items-center justify-between gap-2">
+    <aside
+      id="sidebar-voices"
+      aria-label="بانک گویندگان"
+      className="flex scroll-mt-20 flex-col gap-4 min-[900px]:sticky min-[900px]:top-24 min-[900px]:max-h-[calc(100vh-7rem)] min-[900px]:overflow-y-auto min-[900px]:pl-1"
+    >
+      {/* Sidebar Header */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-amber-400" />
-            <h2 className="text-sm font-extrabold text-slate-50">بانک گویندگان</h2>
+            <Users className="h-4 w-4 shrink-0 text-[var(--ui-accent)]" />
+            <h2 className="text-base font-bold text-[var(--text-primary)] sm:text-lg">بانک گویندگان</h2>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onAddVoice}
-              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-l from-cyan-500 to-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:brightness-110 whitespace-nowrap shrink-0"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>صدای جدید</span>
-            </button>
-            <button
-              type="button"
-              onClick={onCloseDrawer}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-[#131d35] hover:text-slate-100 lg:hidden"
-              aria-label="بستن پنل"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <p className="mt-0.5 text-xs font-normal text-[var(--text-secondary)] tabular-nums">
+            {voices.length} گوینده فعال
+          </p>
         </div>
 
-        {/* Smart Tag Filter Card */}
-        <section className="flex flex-col gap-3 rounded-2xl border border-[#1d2b46] bg-[#10192d] p-3.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-slate-300">فیلتر هوشمند تگ‌ها:</span>
-            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+        <button
+          type="button"
+          onClick={onAddVoice}
+          className="btn-gold inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs transition-all duration-200 ease-out hover:-translate-y-0.5 whitespace-nowrap shrink-0"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span>صدای جدید</span>
+        </button>
+      </div>
+
+      {/* Smart Tag Filter Chips */}
+      <section className="glass-card flex flex-col gap-3 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-[var(--text-secondary)]">فیلتر هوشمند تگ‌ها</span>
+          <button
+            type="button"
+            onClick={() => setTagFilter({ mode: tagFilter.mode === 'OR' ? 'AND' : 'OR' })}
+            title="تغییر منطق فیلتر (OR / AND)"
+            className="btn-studio-secondary rounded-lg px-2.5 py-0.5 font-mono text-xs font-medium transition-colors duration-200"
+          >
+            {tagFilter.mode}
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={selectAllTags}
+            className={`rounded-lg px-3 py-1 text-xs transition-all duration-200 ease-out whitespace-nowrap shrink-0 ${
+              isAllActive
+                ? 'border border-[var(--border-strong)] bg-[var(--bg-hover)] font-semibold text-[var(--text-primary)]'
+                : 'border border-[var(--border-subtle)] bg-transparent font-normal text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            همه
+          </button>
+
+          {allTags.map((tag) => {
+            const active = tagFilter.selectedTags.includes(tag);
+            return (
               <button
+                key={tag}
                 type="button"
-                onClick={() => setTagFilter({ mode: tagFilter.mode === 'OR' ? 'AND' : 'OR' })}
-                title="تغییر منطق فیلتر (OR / AND)"
-                className="rounded border border-[#223254] bg-[#0b1329] px-1.5 py-0.5 font-mono text-[10px] text-sky-300 hover:border-sky-400"
+                onClick={() => toggleTag(tag)}
+                className={`rounded-lg px-3 py-1 text-xs transition-all duration-200 ease-out whitespace-nowrap shrink-0 ${
+                  active
+                    ? 'border border-[var(--border-strong)] bg-[var(--bg-hover)] font-semibold text-[var(--text-primary)]'
+                    : 'border border-[var(--border-subtle)] bg-transparent font-normal text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                }`}
               >
-                {tagFilter.mode}
+                {tag}
               </button>
-            </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Voice List (Single Column, 12px gap) */}
+      <section className="flex flex-col gap-3">
+        {filteredVoices.length === 0 ? (
+          <div className="glass-card flex flex-col items-center gap-2 p-6 text-center">
+            <Users className="h-8 w-8 stroke-[1.4] text-[var(--text-muted)]" />
+            <p className="text-xs font-normal text-[var(--text-secondary)]">
+              صدایی با تگ‌های انتخابی یافت نشد.
+            </p>
           </div>
+        ) : (
+          <AnimatePresence initial={false}>
+            {filteredVoices.map((voice, idx) => {
+              const initialChar = (voice.name || 'گ').trim().charAt(0);
+              const isSelected = activeVoiceIds.has(voice.id);
+              const isEnabled = voice.enabled !== false;
+              const voiceTheme = resolveVoiceVisualTheme(voices, {
+                voiceId: voice.id,
+                fallbackColor: voice.color,
+                fallbackIndex: idx,
+              });
 
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={selectAllTags}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
-                isAllActive
-                  ? 'bg-gradient-to-l from-cyan-500 to-sky-500 text-slate-950 shadow-sm'
-                  : 'border border-[#223254] bg-[#0b1329] text-slate-300 hover:border-sky-400/60 hover:text-white'
-              }`}
-            >
-              همه
-            </button>
-
-            {allTags.map((tag) => {
-              const active = tagFilter.selectedTags.includes(tag);
               return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all whitespace-nowrap shrink-0 ${
-                    active
-                      ? 'bg-gradient-to-l from-cyan-500 to-sky-500 text-slate-950 font-semibold'
-                      : 'border border-[#223254] bg-[#0b1329] text-slate-300 hover:border-sky-400/60 hover:text-white'
+                <motion.div
+                  layout="position"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{
+                    duration: 0.2,
+                    delay: Math.min(idx * 0.035, 0.18),
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                  key={voice.id}
+                  className={`glass-card group flex flex-col gap-3 p-4 transition-colors duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] ${
+                    isSelected ? 'border-[var(--border-strong)]' : ''
                   }`}
                 >
-                  {tag}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      {/* Solid Speaker Identity Avatar with speaker color and dark text */}
+                      <div
+                        aria-hidden="true"
+                        style={{ backgroundColor: voiceTheme.cssVar }}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-[var(--cta-text)] shadow-sm"
+                      >
+                        {initialChar}
+                      </div>
 
-        {/* Voice List */}
-        <section className="flex flex-col gap-2.5">
-          {filteredVoices.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#223254] p-5 text-center text-xs text-slate-400">
-              صدایی با تگ‌های انتخابی یافت نشد.
-            </div>
-          ) : (
-            filteredVoices.map((voice, idx) => {
-              const colorKey = voice.color || getSpeakerColorForVoice(voice.id || idx);
-              const pal = SPEAKER_PALETTE[colorKey];
-
-              return (
-                <div
-                  key={voice.id}
-                  className="flex flex-col gap-2 rounded-xl border border-[#1d2b46] bg-[#10192d] p-3 transition-colors hover:border-sky-400/40"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 min-w-0">
-                      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${pal.dot}`} />
                       <div className="min-w-0">
-                        <div className="truncate text-xs font-bold text-slate-100">{voice.name}</div>
-                        <div className="mt-0.5 truncate font-mono text-[10px] text-slate-400">
-                          {voice.engineVoice}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs ${
+                              isEnabled ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'
+                            }`}
+                            title={isEnabled ? 'فعال' : 'غیرفعال'}
+                          >
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${
+                                isEnabled ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]'
+                              }`}
+                            />
+                            <span className="sr-only">{isEnabled ? 'فعال' : 'غیرفعال'}</span>
+                          </span>
+                          <div className="truncate text-sm font-bold text-[var(--text-primary)]">
+                            {voice.name}
+                          </div>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 truncate font-mono text-xs text-[var(--text-muted)]">
+                          <span className="truncate">{voice.engineVoice}</span>
+                          <span className="text-[var(--text-muted)]">·</span>
+                          <span>V-{voiceTheme.index + 1}</span>
+                          <span className="font-sans text-xs text-[var(--text-muted)]">
+                            · {isEnabled ? 'فعال' : 'غیرفعال'}
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Dim Actions Until Hover */}
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity duration-200 group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={() => handlePreviewVoice(voice)}
                         disabled={previewingId === voice.id}
                         title="پیش‌شنود صدا"
                         aria-label="پیش‌شنود صدا"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-[#0b1329] hover:text-cyan-400"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
                       >
                         {previewingId === voice.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--ui-accent)]" />
                         ) : (
                           <Volume2 className="h-3.5 w-3.5" />
                         )}
@@ -244,40 +286,40 @@ export function SidebarVoices({ drawerOpen, onCloseDrawer, onAddVoice, onEditVoi
                         onClick={() => onEditVoice(voice)}
                         title="ویرایش صدا"
                         aria-label="ویرایش صدا"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-[#0b1329] hover:text-slate-100"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
                       >
-                        <Pencil className="h-3 w-3" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteVoice(voice)}
                         title="حذف صدا"
                         aria-label="حذف صدا"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-400/80 transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--danger-muted)] hover:text-[var(--danger)]"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
 
                   {voice.tags && voice.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pr-4">
+                    <div className="flex flex-wrap gap-2">
                       {voice.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="rounded-md border border-[#223254] bg-[#0b1329] px-2 py-0.5 text-[10px] text-slate-300"
+                          className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)]/70 px-2.5 py-0.5 text-xs text-[var(--text-secondary)]"
                         >
                           {tag}
                         </span>
                       ))}
                     </div>
                   )}
-                </div>
+                </motion.div>
               );
-            })
-          )}
-        </section>
-      </aside>
-    </>
+            })}
+          </AnimatePresence>
+        )}
+      </section>
+    </aside>
   );
-}
+});
